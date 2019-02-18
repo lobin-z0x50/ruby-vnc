@@ -104,12 +104,13 @@ module Net::RFB
     # @param w [Integer]
     # @param h [Integer]
     # @param wait_for_response [Boolean] if true, wait for a FramebufferUpdate response
-    def request_update_fb(incremental: true, x: nil, y: nil, w: nil, h: nil, wait_for_response: false)
+    # @param timeout [Interger] timeout for wait a response
+    def request_update_fb(incremental: true, x: nil, y: nil, w: nil, h: nil, wait_for_response: false, timeout: 3)
       @cb_mutex.synchronize do
         @proxy.fb_update_request incremental ? 1 : 0, x||0, y||0, w||@proxy.w, h||@proxy.h
 
         if wait_for_response
-          @cb_cv.wait
+          @cb_cv.wait timeout
         end
       end
     end
