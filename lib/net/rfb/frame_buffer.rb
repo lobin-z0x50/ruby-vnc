@@ -129,11 +129,12 @@ module Net::RFB
     end
 
     # save current screen pixel data as PNG image
-    # @param dest [String|IO|nil] destination file path, or IO-object, or nil
+    # @param dest            [String|IO|nil] destination file path, or IO-object, or nil
+    # @param force_update_fb [Boolean] do update framebuffer before save process
     # @return [String] PNG binary data as string when dest is null
     #         [true]   else case
-    def save_pixel_data_as_png(dest=nil)
-      self.request_update_fb(wait_for_response: true)
+    def save_pixel_data_as_png(dest=nil, force_update_fb=false)
+      self.request_update_fb(wait_for_response: true) if force_update_fb
 
       image = ChunkyPNG::Image.new(@proxy.w, @proxy.h, rgba_pixel_data)
 
