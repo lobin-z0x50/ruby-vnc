@@ -26,6 +26,8 @@ module Net::RFB
 
       @proxy = VNCRec::RFB::Proxy.new(io, nil, nil, nil, [VNCRecAuthStub, nil])
       @proxy.prepare_framebuffer w, h, @vnc_rec_pix_fmt[:bpp]
+
+      @count_of_update_fb = @count_of_req_update_fb = 0
     end
 
     def send_initial_data
@@ -105,6 +107,7 @@ module Net::RFB
     # @param h [Integer]
     # @param wait_for_response [Boolean] if true, wait for a FramebufferUpdate response
     def request_update_fb(incremental: true, x: nil, y: nil, w: nil, h: nil, wait_for_response: false)
+      @count_of_req_update_fb += 1
       @cb_mutex.synchronize do
         @proxy.fb_update_request incremental ? 1 : 0, x||0, y||0, w||@proxy.w, h||@proxy.h
 
@@ -132,7 +135,13 @@ module Net::RFB
     # @return [String] PNG binary data as string when dest is null
     #         [true]   else case
     def save_pixel_data_as_png(dest=nil)
-      self.request_update_fb(wait_for_response: true)
+      if @count_of_req_update_fb >= @count_of_update_fb
+        #puts "request_update_fb"
+        self.request_update_fb(wait_for_response: true)
+        self.request_update_fb(wait_for_response: true)  # needed twice request!
+      else
+        #puts "no request_update_fb"
+      end
 
       image = ChunkyPNG::Image.new(@proxy.w, @proxy.h, rgba_pixel_data)
 
@@ -164,6 +173,7 @@ module Net::RFB
 
     # Receives data and applies diffs(if incremental) to the @data
     def handle_fb_update
+      @count_of_update_fb += 1
       @proxy.handle_fb_update
     end
 
