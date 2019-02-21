@@ -112,7 +112,7 @@ module Net::RFB
         @proxy.fb_update_request incremental ? 1 : 0, x||0, y||0, w||@proxy.w, h||@proxy.h
 
         if wait_for_response
-          @cb_cv.wait
+          @cb_cv.wait 6
         end
       end
     end
@@ -121,8 +121,13 @@ module Net::RFB
       case t
       when 0 # ----------------------------------------------- FramebufferUpdate
         ret = handle_fb_update
-        @cb_mutex.synchronize do
-          @cb_cv.broadcast
+        if ret
+          request_update_fb
+          return
+        else
+          @cb_mutex.synchronize do
+            @cb_cv.broadcast
+          end
         end
         return ret
       when 1 # --------------------------------------------- SetColourMapEntries
@@ -135,10 +140,17 @@ module Net::RFB
     # @return [String] PNG binary data as string when dest is null
     #         [true]   else case
     def save_pixel_data_as_png(dest=nil)
+      #puts "@count_of_req_update_fb=#{@count_of_req_update_fb}, @count_of_update_fb=#{@count_of_update_fb}"
+
       if @count_of_req_update_fb >= @count_of_update_fb
-        #puts "request_update_fb"
+        #puts "request_update_fb 1"
         self.request_update_fb(wait_for_response: true)
-        self.request_update_fb(wait_for_response: true)  # needed twice request!
+        #puts "request_update_fb 1 ok"
+        #if @proxy.last_args == [0,0,1,1]
+          #puts "request_update_fb 2"
+          #self.request_update_fb(wait_for_response: true)  # needed twice request!
+          #puts "request_update_fb 2 ok"
+        #end
       else
         #puts "no request_update_fb"
       end
@@ -173,6 +185,7 @@ module Net::RFB
 
     # Receives data and applies diffs(if incremental) to the @data
     def handle_fb_update
+      #puts "recv handle_fb_update"
       @count_of_update_fb += 1
       @proxy.handle_fb_update
     end
@@ -183,3 +196,31 @@ module Net::RFB
     end
   end
 end
+
+# HACK: ESXi の `0,0,1,1,` 応答を検出を可能にする
+class VNCRec::RFB::Proxy
+
+  # re-define
+  def handle_fb_update
+    fail 'run #prepare_framebuffer first' unless @data
+    enc = nil
+    @encs ||= { 0 => VNCRec::RFB::EncRaw,
+                5 => VNCRec::RFB::EncHextile,
+                16 => VNCRec::RFB::EncZRLE
+    }
+    _, numofrect = @io.read(3).unpack('CS>')
+    #puts "  numofrect=#{numofrect}"
+    i,x,y,w,h = 0,0,0,0,0
+    while i < numofrect
+      hdr = @io.read 12
+      x, y, w, h, enc = hdr.unpack('S>S>S>S>l>')
+      #puts "  x,y,w,h=#{x}, #{y}, #{w}, #{h}"
+      mod = @encs.fetch(enc) { fail "Unsupported encoding #{enc}" }
+      mod.read_rect @io, x, y, w, h, @bpp, @data, @wb, @h
+      i += 1
+    end
+    numofrect==1 && x==0 && y==0 && w==1 && h==1  # for ESXi `0,0,1,1` judgement
+  end
+
+end
+
